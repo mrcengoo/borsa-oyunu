@@ -1,0 +1,6 @@
+{
+  "name": "Kişisel Borsa Paneli",
+  "description": "4 üretim şirketi, 3'er ürün, atanabilir CEO kartları ve canlı borsa fiyatına göre yükselince fabrikalardan malzeme alıp düşünce alımı durduran kurumsal alıcı şirketler (NVDA, PWR, CNQ, LLY, MSFT) simülasyonu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
