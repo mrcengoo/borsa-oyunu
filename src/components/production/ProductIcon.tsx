@@ -35,7 +35,12 @@ export function ProductIcon({ type, className = '', size = 'md' }: ProductIconPr
     case 'steel':
       return <Hammer className={`${sizeClasses} text-blue-500 ${className}`} />;
     case 'copper':
+    case 'kablo':
       return <Zap className={`${sizeClasses} text-orange-500 ${className}`} />;
+    case 'trafo':
+      return <Zap className={`${sizeClasses} text-yellow-400 ${className}`} />;
+    case 'drone':
+      return <Shield className={`${sizeClasses} text-violet-500 ${className}`} />;
     case 'wafer':
       return <Disc className={`${sizeClasses} text-cyan-500 ${className}`} />;
     case 'chip':

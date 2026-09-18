@@ -100,6 +100,12 @@ interface GameContextType {
   autoRefreshSeconds: number;
   refreshAllMarketPrices: () => void;
 
+  // Real-Time Time Flow System
+  isTimeRunning: boolean;
+  toggleTimeRunning: () => void;
+  setTimeRunning: (running: boolean) => void;
+  elapsedSeconds: number;
+
   // Reset System (Üretimi, stokları ve satışları sıfırlama)
   resetProductionAndSales: () => void;
 
@@ -209,10 +215,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Buyer Corporate Companies State (PWR, NVDA, CNQ, LLY, MSFT)
   const [buyerCompanies, setBuyerCompanies] = useState<BuyerCompany[]>(() => {
     try {
-      const saved = localStorage.getItem(`${STORAGE_KEY}_buyers_v5`);
+      const saved = localStorage.getItem(`${STORAGE_KEY}_buyers_v8`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].stockPrice !== undefined) {
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].craftedProduct !== undefined) {
           return parsed;
         }
       }
@@ -270,6 +276,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Real-time production engine toggle
   const [isFactoryRunning, setIsFactoryRunning] = useState<boolean>(true);
+  const [isTimeRunning, setIsTimeRunning] = useState<boolean>(true);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  const toggleTimeRunning = useCallback(() => {
+    setIsTimeRunning((prev) => {
+      const next = !prev;
+      setIsFactoryRunning(next);
+      return next;
+    });
+  }, []);
+
+  const setTimeRunning = useCallback((running: boolean) => {
+    setIsTimeRunning(running);
+    setIsFactoryRunning(running);
+  }, []);
 
   // Toast Notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -351,7 +372,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const getCompanyStock = useCallback(
     (companyId: string): CompanyStockInfo => {
-      return (
+      const baseInfo =
         companyStocks[companyId] || {
           companyId,
           code: companyId.toUpperCase(),
@@ -363,10 +384,33 @@ export function GameProvider({ children }: { children: ReactNode }) {
           priceHistory: [100.0],
           totalSalesVolume: 0,
           totalSalesRevenue: 0,
-        }
-      );
+        };
+
+      // Calculate waiting stock across all products for this company
+      const compInv = inventories[companyId];
+      let waitingStockCount = 0;
+      if (compInv && compInv.stock) {
+        (Object.values(compInv.stock) as number[]).forEach((qty: number) => {
+          waitingStockCount += Math.max(0, qty || 0);
+        });
+      }
+
+      // 0.3 TL per waiting product reflected directly in stock price
+      const waitingStockBonus = Number((waitingStockCount * 0.3).toFixed(2));
+      const adjustedPrice = Number((baseInfo.stockPrice + waitingStockBonus).toFixed(2));
+      const priceChange = Number((adjustedPrice - 100.0).toFixed(2));
+      const priceChangePercent = Number((((adjustedPrice - 100.0) / 100.0) * 100).toFixed(1));
+
+      return {
+        ...baseInfo,
+        stockPrice: adjustedPrice,
+        priceChange,
+        priceChangePercent,
+        waitingStockCount,
+        waitingStockBonus,
+      };
     },
-    [companyStocks]
+    [companyStocks, inventories]
   );
 
   // Satışlar hisse fiyatıma yansısın: Her satış şirketin hisse fiyatını doğrudan artırır
@@ -463,9 +507,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // REAL-TIME PRODUCTION TICKER (Runs every 1s for all registered companies)
   useEffect(() => {
-    if (!isFactoryRunning) return;
+    if (!isFactoryRunning || !isTimeRunning) return;
 
     const interval = setInterval(() => {
+      setElapsedSeconds((sec) => sec + 1);
+
       setInventories((prev) => {
         const updated: Record<string, CompanyInventoryState> = { ...prev };
         let hasChanges = false;
@@ -480,6 +526,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           const newTotalProduced = { ...compInv.totalProduced };
           const newLines: Record<string, ProductLineStatus> = {};
           const completedNames: string[] = [];
+
+          // Total stock currently in company warehouse (Capacity max 100)
+          const currentTotalStock = (Object.values(newStock) as number[]).reduce(
+            (sum: number, qty: number) => sum + Math.max(0, qty || 0),
+            0
+          );
+          const isWarehouseFull = currentTotalStock >= 100;
 
           comp.products.forEach((prod) => {
             const line = compInv.lines[prod.id] || {
@@ -497,10 +550,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
               return;
             }
 
+            // If warehouse has reached 100 capacity, pause line
+            if (isWarehouseFull) {
+              newLines[prod.id] = {
+                ...line,
+                statusReason: 'Depo Kapasitesi Dolu (100/100)! Satış bekliyor.',
+              };
+              return;
+            }
+
             if (line.remainingSeconds > 1) {
               newLines[prod.id] = {
                 ...line,
                 remainingSeconds: line.remainingSeconds - 1,
+                statusReason: undefined,
               };
               hasChanges = true;
             } else {
@@ -519,6 +582,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   remainingSeconds: prod.durationSeconds,
                   completedBatches: line.completedBatches + 1,
                   isActive: true,
+                  statusReason: undefined,
                 };
               } else {
                 newLines[prod.id] = {
@@ -526,6 +590,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   remainingSeconds: prod.durationSeconds,
                   completedBatches: line.completedBatches + 1,
                   isActive: false, // pause when out of cash
+                  statusReason: 'Yetersiz Nakit! Üretim askıya alındı.',
                 };
               }
             }
@@ -558,7 +623,84 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isFactoryRunning, companies, addLog]);
+  }, [isFactoryRunning, isTimeRunning, companies, addLog]);
+
+  // REAL-TIME FINVIZ BUYER STOCKS FETCHER
+  // Alıcı şirketlerin hisse fiyatları Finviz'den gerçek borsa fiyatları olarak çekilir ve bağımsız güncellenir.
+  const fetchBuyerStocksFromFinviz = useCallback(async () => {
+    try {
+      const symbols = 'NVDA,PWR,CNQ,LLY,MSFT,SPY';
+      const res = await fetch(`/api/stocks?symbols=${symbols}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success || !json.data) return;
+
+      const data = json.data;
+      setBuyerCompanies((prevBuyers) => {
+        return prevBuyers.map((buyer) => {
+          const symbolKey = buyer.id === 'usa' ? 'SPY' : buyer.code.toUpperCase();
+          const quote = data[symbolKey];
+          if (!quote || 'error' in quote) return buyer;
+
+          const price = typeof quote.price === 'number' ? quote.price : buyer.stockPrice;
+          const prevClose = typeof quote.prevClose === 'number' ? quote.prevClose : buyer.previousStockPrice;
+          const changeAmount = typeof quote.changeAmount === 'number'
+            ? quote.changeAmount
+            : Number((price - prevClose).toFixed(2));
+          const changePercent = typeof quote.changePercent === 'number'
+            ? quote.changePercent
+            : Number((((price - prevClose) / prevClose) * 100).toFixed(2));
+          const isRising = changeAmount >= 0;
+
+          const newHistory = Array.isArray(quote.sparkline1D) && quote.sparkline1D.length > 0
+            ? quote.sparkline1D
+            : [...(buyer.priceHistory || [prevClose]).slice(-8), price];
+
+          const nowTime = quote.lastUpdated || new Date().toLocaleTimeString('tr-TR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+
+          return {
+            ...buyer,
+            stockPrice: price,
+            previousStockPrice: prevClose,
+            priceChange: changeAmount,
+            priceChangePercent: changePercent,
+            priceHistory: newHistory,
+            dayHigh: quote.dayHigh || Math.max(buyer.dayHigh || price, price),
+            dayLow: quote.dayLow || Math.min(buyer.dayLow || price, price),
+            volume: quote.volume || buyer.volume,
+            marketCap: quote.marketCap ? `$${quote.marketCap}` : buyer.marketCap,
+            lastUpdatedTime: nowTime,
+            isProcurementActive: isRising,
+            procurementStatus: isRising ? ('active' as const) : ('halted' as const),
+            procurementStatusReason: isRising
+              ? `Finviz hissesi yükselişte ($${price}, +%${changePercent}). Fabrikalardan hammadde alımı açık.`
+              : `Finviz hissesi ekside ($${price}, %${changePercent}). Alım durduruldu; hammadde fabrikada bekleyip +0.3 ₺/adet stok primi sağlar.`,
+          };
+        });
+      });
+    } catch (err) {
+      console.warn('Finviz borsa verisi çekilemedi:', err);
+    }
+  }, []);
+
+  // Poll Finviz every 12 seconds when running, plus immediate fetch on mount
+  useEffect(() => {
+    fetchBuyerStocksFromFinviz();
+  }, [fetchBuyerStocksFromFinviz]);
+
+  useEffect(() => {
+    if (!isTimeRunning) return;
+
+    const interval = setInterval(() => {
+      fetchBuyerStocksFromFinviz();
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [isTimeRunning, fetchBuyerStocksFromFinviz]);
 
   // Fast Forward Line
   const fastForwardLine = useCallback(
@@ -796,10 +938,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const buyer = buyerCompanies.find((b) => b.id === buyerId);
       if (!buyer) return;
 
-      // Check if procurement is active (Hisse fiyatı düşüşteyse alım durdurulur)
-      if (!buyer.isProcurementActive) {
+      // Check if procurement is active (Hisse fiyatı eksideyse veya alım kapalıysa alım durdurulur)
+      if (!buyer.isProcurementActive || (buyer.priceChange ?? 0) <= 0) {
         showToast(
-          `⛔ ${buyer.code} hisse fiyatı düştüğü için alımı durdurdu (%${buyer.priceChangePercent})! Fiyatın yükselmesini bekleyin.`
+          `⛔ ${buyer.code} hisse fiyatı ekside (%${buyer.priceChangePercent}) olduğu için alımı durdurdu! Hammaddeler fabrikaların stoğunda beklemeye devam ediyor.`
         );
         return;
       }
@@ -847,7 +989,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      // Update buyer company contract progress
+      // Update buyer company contract progress and crafted product inventory
       let bonusEarned = 0;
       setBuyerCompanies((prev) =>
         prev.map((b) => {
@@ -868,11 +1010,53 @@ export function GameProvider({ children }: { children: ReactNode }) {
             (d) => d.fulfilledQty >= d.targetContractQty
           );
 
+          // Update buyer's sectoral crafted product raw materials & manufacturing
+          let craftedProduct = b.craftedProduct;
+          if (craftedProduct) {
+            const curMat = { ...(craftedProduct.currentMaterials || {}) };
+            curMat[productId] = (curMat[productId] || 0) + quantity;
+            let totalCost = (craftedProduct.totalCost || 0) + totalEarned;
+            let producedCount = craftedProduct.producedCount || 0;
+
+            // Check if recipe requirements are met
+            let canCraft = true;
+            while (canCraft) {
+              for (const req of craftedProduct.requirements) {
+                if ((curMat[req.productId] || 0) < req.requiredQty) {
+                  canCraft = false;
+                  break;
+                }
+              }
+              if (canCraft) {
+                for (const req of craftedProduct.requirements) {
+                  curMat[req.productId] = (curMat[req.productId] || 0) - req.requiredQty;
+                }
+                producedCount += 1;
+                addLog(
+                  'produce_complete',
+                  `💊 ${b.code}: Gerekli hammaddeleri toplayarak 1 adet "${craftedProduct.name}" üretti ve deposuna koydu!`,
+                  undefined,
+                  companyId
+                );
+              }
+            }
+
+            const unitCost = producedCount > 0 ? Number((totalCost / producedCount).toFixed(2)) : 0;
+            craftedProduct = {
+              ...craftedProduct,
+              currentMaterials: curMat,
+              totalCost,
+              producedCount,
+              unitCost,
+            };
+          }
+
           if (allCompleted && !b.contractCompleted) {
             bonusEarned = b.contractBonusReward;
             return {
               ...b,
               demands: updatedDemands,
+              craftedProduct,
               contractCompleted: true,
             };
           }
@@ -880,6 +1064,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           return {
             ...b,
             demands: updatedDemands,
+            craftedProduct,
           };
         })
       );
@@ -951,9 +1136,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // UPDATE BUYER PRICES & EXECUTE CONDITIONAL PROCUREMENT
   // Kural: Borsa fiyatı yükselen şirketler fabrikalardan malzeme alır, fiyatı düşenler alımı durdurur.
+  // Alıcı şirketlerin hisse fiyatları bağımsız gerçek Finviz borsa fiyatlarıdır, iç alım/tedarik hisse fiyatını bozmaz.
   const updateBuyerPricesAndProcure = useCallback(
-    (customEvent?: GameEvent) => {
-      const eventToUse = customEvent || activeEvent;
+    () => {
       const reports: BuyerTurnProcurement[] = [];
       let totalProcuredCash = 0;
       let totalProcuredItems = 0;
@@ -974,25 +1159,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         setBuyerCompanies((prevBuyers) => {
           const nextBuyers = prevBuyers.map((buyer) => {
-            const oldPrice = buyer.stockPrice || 100;
-            const isEventRelevant = eventToUse.affectedCommodity
-              ? buyer.demands.some((d) => d.productId === eventToUse.affectedCommodity)
-              : false;
-
-            // Random price swing with realistic stock volatility (-4.2% to +5.2%)
-            let pctChange = Math.random() * 9.4 - 4.2;
-            if (isEventRelevant) {
-              pctChange += eventToUse.impactType === 'positive' ? 3.5 : -3.0;
-            }
-            pctChange = Number(pctChange.toFixed(1));
-
-            let newPrice = Number((oldPrice * (1 + pctChange / 100)).toFixed(2));
-            newPrice = Math.max(12, newPrice);
-            const priceDelta = Number((newPrice - oldPrice).toFixed(2));
-            const finalPct = Number(((priceDelta / oldPrice) * 100).toFixed(1));
+            const currentPrice = buyer.stockPrice || 100;
+            const priceDelta = buyer.priceChange ?? 0;
+            const finalPct = buyer.priceChangePercent ?? 0;
             const isRising = priceDelta >= 0;
-
-            const newHistory = [...(buyer.priceHistory || [oldPrice]).slice(-6), newPrice];
 
             const itemsBoughtThisRound: BuyerTurnProcurement['itemsBought'] = [];
             let updatedDemands = [...buyer.demands];
@@ -1000,7 +1170,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             let contractCompletedNow = buyer.contractCompleted;
 
             if (isRising) {
-              // FİYAT YÜKSELDİ -> Fabrikalardan malzeme satın al!
+              // FİYAT YÜKSELDİ VEYA ARTI DA -> Fabrikalardan malzeme satın al!
               updatedDemands = updatedDemands.map((demand) => {
                 if (demand.fulfilledQty >= demand.targetContractQty) {
                   return demand;
@@ -1058,14 +1228,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 contractCompletedNow = true;
               }
 
-              const reason = `Hisse fiyatı $${newPrice} seviyesine yükseldi (+%${finalPct}). Bütçe onaylandı; fabrikalardan malzeme tedariği yapılıyor.`;
+              const reason = `Finviz hissesi $${currentPrice} seviyesinde yükselişte (+%${finalPct}). Bütçe onaylandı; fabrikalardan hammadde tedariği yapılıyor.`;
 
               reports.push({
                 buyerId: buyer.id,
                 buyerCode: buyer.code,
                 ticker: buyer.ticker || buyer.code,
-                oldStockPrice: oldPrice,
-                newStockPrice: newPrice,
+                oldStockPrice: currentPrice,
+                newStockPrice: currentPrice,
                 priceDelta,
                 priceDeltaPercent: finalPct,
                 procurementStatus: 'active',
@@ -1073,32 +1243,71 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 itemsBought: itemsBoughtThisRound,
               });
 
+              // Crafting check for this buyer if items bought
+              let craftedProduct = buyer.craftedProduct;
+              if (craftedProduct && itemsBoughtThisRound.length > 0) {
+                const curMat = { ...(craftedProduct.currentMaterials || {}) };
+                let additionalCost = 0;
+                itemsBoughtThisRound.forEach((it) => {
+                  curMat[it.productId] = (curMat[it.productId] || 0) + it.quantity;
+                  additionalCost += it.totalPaid;
+                });
+                let totalCost = (craftedProduct.totalCost || 0) + additionalCost;
+                let producedCount = craftedProduct.producedCount || 0;
+
+                let canCraft = true;
+                while (canCraft) {
+                  for (const req of craftedProduct.requirements) {
+                    if ((curMat[req.productId] || 0) < req.requiredQty) {
+                      canCraft = false;
+                      break;
+                    }
+                  }
+                  if (canCraft) {
+                    for (const req of craftedProduct.requirements) {
+                      curMat[req.productId] = (curMat[req.productId] || 0) - req.requiredQty;
+                    }
+                    producedCount += 1;
+                    addLog(
+                      'produce_complete',
+                      `💊 ${buyer.code}: Malzemeleri tamamlayarak 1 adet "${craftedProduct.name}" üretti ve kurumsal deposuna koydu!`,
+                      undefined
+                    );
+                  }
+                }
+
+                const unitCost = producedCount > 0 ? Number((totalCost / producedCount).toFixed(2)) : 0;
+                craftedProduct = {
+                  ...craftedProduct,
+                  currentMaterials: curMat,
+                  totalCost,
+                  producedCount,
+                  unitCost,
+                };
+              }
+
               return {
                 ...buyer,
-                stockPrice: newPrice,
-                previousStockPrice: oldPrice,
-                priceChange: priceDelta,
-                priceChangePercent: finalPct,
-                priceHistory: newHistory,
                 isProcurementActive: true,
                 procurementStatus: 'active' as const,
                 procurementStatusReason: reason,
                 demands: updatedDemands,
+                craftedProduct,
                 totalPurchasedValue: newTotalPurchased,
                 contractCompleted: contractCompletedNow,
                 lastProcuredProduct: itemsBoughtThisRound[0]?.productName,
                 lastProcuredQty: itemsBoughtThisRound.reduce((s, i) => s + i.quantity, 0),
               };
             } else {
-              // FİYAT DÜŞTÜ -> ALIMI DURDUR!
-              const reason = `Hisse fiyatı $${newPrice} seviyesine geriledi (%${finalPct}). Tasarruf tedbiri nedeniyle malzeme alımı durduruldu!`;
+              // FİYAT DÜŞTÜ VEYA EKSİDE -> ALIMI DURDUR!
+              const reason = `Finviz hissesi $${currentPrice} seviyesinde ekside (%${finalPct}). Tasarruf tedbiri nedeniyle malzeme alımı durduruldu! Hammaddeler fabrikada bekleyerek hisseye +0.3 ₺ prim sağlar.`;
 
               reports.push({
                 buyerId: buyer.id,
                 buyerCode: buyer.code,
                 ticker: buyer.ticker || buyer.code,
-                oldStockPrice: oldPrice,
-                newStockPrice: newPrice,
+                oldStockPrice: currentPrice,
+                newStockPrice: currentPrice,
                 priceDelta,
                 priceDeltaPercent: finalPct,
                 procurementStatus: 'halted',
@@ -1108,11 +1317,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
               return {
                 ...buyer,
-                stockPrice: newPrice,
-                previousStockPrice: oldPrice,
-                priceChange: priceDelta,
-                priceChangePercent: finalPct,
-                priceHistory: newHistory,
                 isProcurementActive: false,
                 procurementStatus: 'halted' as const,
                 procurementStatusReason: reason,
@@ -1306,6 +1510,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     showToast,
   ]);
 
+  const refreshAllMarketPrices = useCallback(async () => {
+    await fetchBuyerStocksFromFinviz();
+    updateBuyerPricesAndProcure();
+  }, [fetchBuyerStocksFromFinviz, updateBuyerPricesAndProcure]);
+
+  const resetProductionAndSales = useCallback(() => {
+    const freshInv: Record<string, CompanyInventoryState> = {};
+    companies.forEach((comp) => {
+      freshInv[comp.id] = createInitialInventory(comp);
+    });
+    setInventories(freshInv);
+    setCompanyStocks(createInitialCompanyStocks());
+    setBuyerCompanies(INITIAL_BUYER_COMPANIES);
+    setElapsedSeconds(0);
+    showToast('✓ Tüm üretim döngüleri, depo stokları ve satışlar sıfırlandı.');
+  }, [companies, showToast]);
+
   const navigateToCompany = useCallback(
     (companyId: string) => {
       setSelectedCompanyId(companyId);
@@ -1349,6 +1570,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
         toggleProductionLine,
         fastForwardLine,
         getProductPriceBreakdown,
+        companyStocks,
+        getCompanyStock,
+        recordCompanySale,
+        autoRefreshEnabled,
+        setAutoRefreshEnabled,
+        autoRefreshSeconds,
+        refreshAllMarketPrices,
+        resetProductionAndSales,
+        isTimeRunning,
+        toggleTimeRunning,
+        setTimeRunning,
+        elapsedSeconds,
         recentTransactions,
         toastMessage,
         showToast,

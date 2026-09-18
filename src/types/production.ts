@@ -1,3 +1,6 @@
+export const MAX_STOCK_CAPACITY = 100;
+export const STOCK_VALUATION_PER_UNIT = 0.3;
+
 export interface RawMaterialProduct {
   id: string;
   name: string;
@@ -66,6 +69,24 @@ export interface BuyerDemand {
   fulfilledQty: number;
 }
 
+export interface BuyerRecipeRequirement {
+  productId: string;
+  productName: string;
+  unit: string;
+  requiredQty: number;
+}
+
+export interface BuyerCraftedProduct {
+  name: string;
+  description: string;
+  unit: string;
+  producedCount: number;
+  totalCost: number;
+  unitCost: number;
+  requirements: BuyerRecipeRequirement[];
+  currentMaterials: Record<string, number>;
+}
+
 export interface BuyerCompany {
   id: string;
   code: string;
@@ -83,6 +104,10 @@ export interface BuyerCompany {
   priceChange: number;
   priceChangePercent: number;
   priceHistory: number[];
+  dayHigh?: number;
+  dayLow?: number;
+  volume?: string;
+  lastUpdatedTime?: string;
   isProcurementActive: boolean; // Fiyat yükselirse true (alım yapar), düşerse false (alım durdurulur)
   procurementStatus: 'active' | 'halted';
   procurementStatusReason: string;
@@ -92,6 +117,7 @@ export interface BuyerCompany {
   contractBonusReward: number;
   contractCompleted: boolean;
   demands: BuyerDemand[];
+  craftedProduct?: BuyerCraftedProduct;
 }
 
 export interface ProductLineStatus {
@@ -102,6 +128,7 @@ export interface ProductLineStatus {
   isAutoProducing: boolean;
   isActive: boolean;
   completedBatches: number;
+  statusReason?: string;
 }
 
 export interface CompanyStockInfo {
@@ -115,6 +142,8 @@ export interface CompanyStockInfo {
   priceHistory: number[];
   totalSalesVolume: number;
   totalSalesRevenue: number;
+  waitingStockCount?: number;
+  waitingStockBonus?: number;
 }
 
 export interface CompanyInventoryState {
@@ -142,9 +171,7 @@ export type GameNavTab =
   | 'company_detail'
   | 'ceos'
   | 'buyers'
-  | 'market'
-  | 'turn'
-  | 'stocks';
+  | 'market';
 
 export interface MarketItem {
   id: string;
@@ -160,6 +187,9 @@ export interface MarketItem {
   priceChangePercent: number;
   totalMarketSold: number;
   priceHistory: number[];
+  totalProduced?: number;
+  totalSold?: number;
+  currentStock?: number;
 }
 
 export interface GameEvent {

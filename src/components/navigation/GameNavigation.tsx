@@ -4,32 +4,35 @@ import {
   Building2,
   Factory,
   TrendingUp,
-  RotateCw,
   Coins,
   Play,
   Pause,
-  Layers,
   Sparkles,
-  ChevronRight,
   Users,
   ShoppingCart,
+  Clock,
 } from 'lucide-react';
 import { useGame } from '../../context/GameContext';
 import { GameNavTab } from '../../types/production';
+
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 export function GameNavigation() {
   const {
     activeTab,
     setActiveTab,
-    turn,
-    advanceTurn,
     playerTotalCash,
     currency,
     setCurrency,
     currencySymbol,
     selectedCompany,
-    isFactoryRunning,
-    setIsFactoryRunning,
+    isTimeRunning,
+    toggleTimeRunning,
+    elapsedSeconds,
   } = useGame();
 
   const navItems: { id: GameNavTab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: string }[] = [
@@ -41,10 +44,8 @@ export function GameNavigation() {
       icon: Factory,
     },
     { id: 'ceos', label: 'CEO KARTLARI & ATAMA', icon: Users, badge: '6' },
-    { id: 'buyers', label: 'ALICI ŞİRKETLER (PWR, NVDA, CNQ)', icon: ShoppingCart, badge: 'Sözleşme' },
+    { id: 'buyers', label: 'ALICI ŞİRKETLER', icon: ShoppingCart, badge: 'Sektörel' },
     { id: 'market', label: 'PİYASA', icon: TrendingUp, badge: 'Canlı' },
-    { id: 'turn', label: `OYUN / TUR (${turn})`, icon: RotateCw },
-    { id: 'stocks', label: 'BORSA KARTLARI', icon: Layers },
   ];
 
   return (
@@ -63,42 +64,49 @@ export function GameNavigation() {
                   SANAYİ & PİYASA
                 </span>
                 <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  STRATEJİ V2.0
+                  GERÇEK ZAMANLI SİMÜLASYON
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden md:block">
-                Çok Şirketli Endüstriyel Üretim ve Emtia Pazarı
+                Zamana Göre Akan Endüstriyel Üretim ve Emtia Pazarı
               </p>
             </div>
           </div>
 
-          {/* Player Total Treasury & Quick Turn Controls */}
+          {/* Real-time Time Engine Control & Treasury */}
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Real-time Ticker Pause/Resume */}
-            <button
-              type="button"
-              onClick={() => setIsFactoryRunning((prev) => !prev)}
-              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
-                isFactoryRunning
-                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
-                  : 'bg-amber-950/60 text-amber-300 border-amber-700/60 hover:bg-amber-900/60'
-              }`}
-              title={isFactoryRunning ? 'Otomatik üretimi duraklat' : 'Otomatik üretimi devam ettir'}
-            >
-              {isFactoryRunning ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <Pause className="w-3 h-3" />
-                  <span>Otomasyon Açık</span>
-                </>
-              ) : (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <Play className="w-3 h-3" />
-                  <span>Duraklatıldı</span>
-                </>
-              )}
-            </button>
+            {/* Continuous Real-Time Flow Controller */}
+            <div className="flex items-center gap-2 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700">
+              <div className="flex items-center gap-1.5 font-mono text-xs text-slate-300">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-black text-white">{formatElapsed(elapsedSeconds)}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleTimeRunning}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                  isTimeRunning
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                }`}
+                title={isTimeRunning ? 'Sistemi duraklat' : 'Zaman akışını devam ettir'}
+              >
+                {isTimeRunning ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <Pause className="w-3 h-3" />
+                    <span className="hidden sm:inline">Durdur</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <Play className="w-3 h-3" />
+                    <span className="hidden sm:inline">Devam Et</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             {/* Currency Selector */}
             <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs font-mono font-bold">
@@ -138,16 +146,6 @@ export function GameNavigation() {
                 </span>
               </div>
             </div>
-
-            {/* Fast Advance Turn Button */}
-            <button
-              type="button"
-              onClick={advanceTurn}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-md hover:shadow-amber-500/20 active:scale-95 transition-all cursor-pointer"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              <span>Turu İlerlet ({turn})</span>
-            </button>
           </div>
         </div>
 
