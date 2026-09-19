@@ -21,6 +21,8 @@ import {
   BuyerCompany,
   BuyerTurnProcurement,
   CompanyStockInfo,
+  CountryData,
+  ExportPriceBreakdown,
 } from '../types/production';
 import {
   REGISTERED_COMPANIES,
@@ -28,6 +30,7 @@ import {
   INITIAL_BUYER_COMPANIES,
   INITIAL_MARKET_COMMODITIES,
   SAMPLE_GAME_EVENTS,
+  INITIAL_COUNTRIES,
   ARZ_COMPANY,
 } from '../data/productionCompanies';
 
@@ -61,11 +64,20 @@ interface GameContextType {
   ceoCards: CeoCardData[];
   assignCeoToCompany: (companyId: string, ceoId: string) => void;
 
-  // Buyer Corporate Companies (PWR, NVDA, CNQ vb. Alıcı Şirket Kartları)
+  // Buyer Corporate Companies (NVDA, LLY, PWR, MSFT, AVAV Alıcı Şirket Kartları)
   buyerCompanies: BuyerCompany[];
   sellToBuyer: (buyerId: string, productId: string, quantity?: number) => void;
   sellAllToBuyer: (buyerId: string, productId: string) => void;
+  supplyBuyerRecipe: (buyerId: string) => void;
   updateBuyerPricesAndProcure: (customEvent?: GameEvent) => void;
+
+  // 30 Dakikada Bir Gelen 5 Ülke
+  countries: CountryData[];
+  currentCountry: CountryData;
+  countryTimeRemaining: number;
+  sellToCountry: (countryId: string, productName: string, quantity?: number) => void;
+  getExportPriceBreakdown: (countryId: string, productName: string) => ExportPriceBreakdown;
+  switchRandomCountry: () => void;
 
   // Market
   marketItems: MarketItem[];
@@ -115,7 +127,7 @@ interface GameContextType {
   showToast: (msg: string) => void;
 }
 
-const STORAGE_KEY = 'boardgame_empire_save_v7';
+const STORAGE_KEY = 'sanayi_piyasa_v9';
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
@@ -134,6 +146,8 @@ function createInitialCompanyStocks(): Record<string, CompanyStockInfo> {
       priceHistory: [100.0],
       totalSalesVolume: 0,
       totalSalesRevenue: 0,
+      stockCapacity: comp.stockCapacity || 100,
+      currentStockCount: 0,
     };
   });
   return stocks;
@@ -212,19 +226,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return INITIAL_CEO_CARDS;
   });
 
-  // Buyer Corporate Companies State (PWR, NVDA, CNQ, LLY, MSFT)
+  // Buyer Corporate Companies State (NVDA, LLY, PWR, MSFT, AVAV)
   const [buyerCompanies, setBuyerCompanies] = useState<BuyerCompany[]>(() => {
     try {
-      const saved = localStorage.getItem(`${STORAGE_KEY}_buyers_v8`);
+      const saved = localStorage.getItem(`${STORAGE_KEY}_buyers_v9`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].craftedProduct !== undefined) {
+        if (Array.isArray(parsed) && parsed.length === 5 && parsed.some((b) => b.code === 'AVAV')) {
           return parsed;
         }
       }
     } catch {}
     return INITIAL_BUYER_COMPANIES;
   });
+
+  // 30 Dakikada Bir Gelen 5 Ülke (ABD, Çin, Almanya, Japonya, G.Kore)
+  const [countries] = useState<CountryData[]>(INITIAL_COUNTRIES);
+  const [currentCountryIndex, setCurrentCountryIndex] = useState<number>(0);
+  const [countryTimeRemaining, setCountryTimeRemaining] = useState<number>(1800); // 30 dakika = 1800 sn
+  const currentCountry = countries[currentCountryIndex] || countries[0];
 
   // Multi-Company Inventories State
   const [inventories, setInventories] = useState<Record<string, CompanyInventoryState>>(() => {
@@ -372,6 +392,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const getCompanyStock = useCallback(
     (companyId: string): CompanyStockInfo => {
+      const comp = companies.find((c) => c.id === companyId);
       const baseInfo =
         companyStocks[companyId] || {
           companyId,
@@ -384,33 +405,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
           priceHistory: [100.0],
           totalSalesVolume: 0,
           totalSalesRevenue: 0,
+          stockCapacity: comp?.stockCapacity || 100,
+          currentStockCount: 0,
         };
 
-      // Calculate waiting stock across all products for this company
       const compInv = inventories[companyId];
-      let waitingStockCount = 0;
+      let currentStockCount = 0;
       if (compInv && compInv.stock) {
         (Object.values(compInv.stock) as number[]).forEach((qty: number) => {
-          waitingStockCount += Math.max(0, qty || 0);
+          currentStockCount += Math.max(0, qty || 0);
         });
       }
 
-      // 0.3 TL per waiting product reflected directly in stock price
-      const waitingStockBonus = Number((waitingStockCount * 0.3).toFixed(2));
-      const adjustedPrice = Number((baseInfo.stockPrice + waitingStockBonus).toFixed(2));
-      const priceChange = Number((adjustedPrice - 100.0).toFixed(2));
-      const priceChangePercent = Number((((adjustedPrice - 100.0) / 100.0) * 100).toFixed(1));
-
       return {
         ...baseInfo,
-        stockPrice: adjustedPrice,
-        priceChange,
-        priceChangePercent,
-        waitingStockCount,
-        waitingStockBonus,
+        stockCapacity: comp?.stockCapacity || 100,
+        currentStockCount,
       };
     },
-    [companyStocks, inventories]
+    [companyStocks, inventories, companies]
   );
 
   // Satışlar hisse fiyatıma yansısın: Her satış şirketin hisse fiyatını doğrudan artırır
@@ -527,12 +540,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           const newLines: Record<string, ProductLineStatus> = {};
           const completedNames: string[] = [];
 
-          // Total stock currently in company warehouse (Capacity max 100)
+          // Total stock currently in company warehouse (Capacity per company: comp.stockCapacity)
           const currentTotalStock = (Object.values(newStock) as number[]).reduce(
             (sum: number, qty: number) => sum + Math.max(0, qty || 0),
             0
           );
-          const isWarehouseFull = currentTotalStock >= 100;
+          const capacity = comp.stockCapacity || 100;
+          const isWarehouseFull = currentTotalStock >= capacity;
 
           comp.products.forEach((prod) => {
             const line = compInv.lines[prod.id] || {
@@ -550,28 +564,38 @@ export function GameProvider({ children }: { children: ReactNode }) {
               return;
             }
 
-            // If warehouse has reached 100 capacity, pause line
-            if (isWarehouseFull) {
-              newLines[prod.id] = {
-                ...line,
-                statusReason: 'Depo Kapasitesi Dolu (100/100)! Satış bekliyor.',
-              };
-              return;
-            }
-
             if (line.remainingSeconds > 1) {
               newLines[prod.id] = {
                 ...line,
                 remainingSeconds: line.remainingSeconds - 1,
-                statusReason: undefined,
+                statusReason: isWarehouseFull
+                  ? `Depo Dolu (${currentTotalStock}/${capacity})! Tamamlanan üretim boşa gidecek (-1 ₺).`
+                  : undefined,
               };
               hasChanges = true;
             } else {
               // Batch finished!
-              newStock[prod.id] = (newStock[prod.id] || 0) + 1;
-              newTotalProduced[prod.id] = (newTotalProduced[prod.id] || 0) + 1;
-              completedNames.push(prod.name);
-              hasChanges = true;
+              if (isWarehouseFull) {
+                // Depo dolarsa üretim boşa gider ve kasadan 1 ₺ düşer
+                newCash = Math.max(0, newCash - 1);
+                newExpenses += 1;
+                newTotalProduced[prod.id] = (newTotalProduced[prod.id] || 0) + 1;
+                hasChanges = true;
+
+                setTimeout(() => {
+                  addLog(
+                    'produce_complete',
+                    `⚠️ ${comp.code}: Depo kapasitesi dolu (${capacity}/${capacity})! ${prod.name} üretimi boşa gitti, kasadan -1 ₺ ceza düştü.`,
+                    -1,
+                    comp.id
+                  );
+                }, 0);
+              } else {
+                newStock[prod.id] = (newStock[prod.id] || 0) + 1;
+                newTotalProduced[prod.id] = (newTotalProduced[prod.id] || 0) + 1;
+                completedNames.push(prod.name);
+                hasChanges = true;
+              }
 
               // Cost of next batch
               if (newCash >= prod.productionCost) {
@@ -582,7 +606,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   remainingSeconds: prod.durationSeconds,
                   completedBatches: line.completedBatches + 1,
                   isActive: true,
-                  statusReason: undefined,
+                  statusReason: isWarehouseFull
+                    ? `Depo Dolu (${currentTotalStock}/${capacity})! Üretim boşa gidiyor.`
+                    : undefined,
                 };
               } else {
                 newLines[prod.id] = {
@@ -629,7 +655,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Alıcı şirketlerin hisse fiyatları Finviz'den gerçek borsa fiyatları olarak çekilir ve bağımsız güncellenir.
   const fetchBuyerStocksFromFinviz = useCallback(async () => {
     try {
-      const symbols = 'NVDA,PWR,CNQ,LLY,MSFT,SPY';
+      const symbols = 'NVDA,PWR,LLY,MSFT,AVAV';
       const res = await fetch(`/api/stocks?symbols=${symbols}`);
       if (!res.ok) return;
       const json = await res.json();
@@ -638,7 +664,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const data = json.data;
       setBuyerCompanies((prevBuyers) => {
         return prevBuyers.map((buyer) => {
-          const symbolKey = buyer.id === 'usa' ? 'SPY' : buyer.code.toUpperCase();
+          const symbolKey = buyer.code.toUpperCase();
           const quote = data[symbolKey];
           if (!quote || 'error' in quote) return buyer;
 
@@ -678,7 +704,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             procurementStatus: isRising ? ('active' as const) : ('halted' as const),
             procurementStatusReason: isRising
               ? `Finviz hissesi yükselişte ($${price}, +%${changePercent}). Fabrikalardan hammadde alımı açık.`
-              : `Finviz hissesi ekside ($${price}, %${changePercent}). Alım durduruldu; hammadde fabrikada bekleyip +0.3 ₺/adet stok primi sağlar.`,
+              : `Finviz hissesi ekside ($${price}, %${changePercent}). Malzeme alımı durduruldu.`,
           };
         });
       });
@@ -1134,6 +1160,256 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [buyerCompanies, companies, inventories, sellToBuyer, showToast]
   );
 
+  // Reçete Tamamlama: Fabrikalardaki stoklardan alıcı şirketin üreteceği ürün için eksik hammaddeleri tedarik et
+  const supplyBuyerRecipe = useCallback(
+    (buyerId: string) => {
+      const buyer = buyerCompanies.find((b) => b.id === buyerId);
+      if (!buyer || !buyer.craftedProduct) return;
+
+      if (!buyer.isProcurementActive) {
+        showToast(
+          `⛔ ${buyer.code} hisse fiyatı negatif olduğu için malzeme alımı durduruldu! Fiyatın yükselmesini bekleyin.`
+        );
+        return;
+      }
+
+      const requirements = buyer.craftedProduct.requirements;
+      const curMat = buyer.craftedProduct.currentMaterials || {};
+      let anySupplied = false;
+      let totalSuppliedCount = 0;
+
+      requirements.forEach((req) => {
+        const collected = curMat[req.productId] || 0;
+        const missing = Math.max(0, req.requiredQty - collected);
+        if (missing > 0) {
+          // Check player factory stock
+          let totalAvail = 0;
+          companies.forEach((comp) => {
+            totalAvail += inventories[comp.id]?.stock[req.productId] || 0;
+          });
+
+          const toSend = Math.min(missing, totalAvail);
+          if (toSend > 0) {
+            sellToBuyer(buyerId, req.productId, toSend);
+            anySupplied = true;
+            totalSuppliedCount += toSend;
+          }
+        }
+      });
+
+      if (!anySupplied) {
+        showToast(
+          `⚠️ Fabrikalarınızda ${buyer.code} için gereken eksik hammaddelerden yeterli stok bulunmuyor!`
+        );
+      } else {
+        showToast(
+          `✓ ${buyer.code} için ${totalSuppliedCount} adet hammadde fabrikalardan aktarıldı!`
+        );
+      }
+    },
+    [buyerCompanies, companies, inventories, sellToBuyer, showToast]
+  );
+
+  // Ülkeye İhracat Fiyatı Hesaplayıcı (Baz Fiyat + Gümrük + Lojistik + Ürün Primi + CEO Ülke Bonusu)
+  const getExportPriceBreakdown = useCallback(
+    (countryId: string, productName: string): ExportPriceBreakdown => {
+      const country = countries.find((c) => c.id === countryId) || currentCountry;
+      const buyer = buyerCompanies.find(
+        (b) => b.craftedProduct?.name.toLowerCase() === productName.toLowerCase()
+      );
+
+      let basePrice = 160;
+      const pNameLower = productName.toLowerCase();
+      if (pNameLower.includes('çip') || pNameLower.includes('cip')) basePrice = 160;
+      else if (pNameLower.includes('ilaç') || pNameLower.includes('ilac')) basePrice = 180;
+      else if (pNameLower.includes('trafo')) basePrice = 190;
+      else if (pNameLower.includes('bulut') || pNameLower.includes('platform')) basePrice = 200;
+      else if (pNameLower.includes('drone')) basePrice = 230;
+      else if (buyer?.craftedProduct?.unitCost && buyer.craftedProduct.unitCost > 0) {
+        basePrice = buyer.craftedProduct.unitCost;
+      }
+
+      const customsDuty = country.customsDuty || 0;
+      const logisticsCost = country.logisticsCost || 0;
+      const isBonus = country.productBonus?.productName.toLowerCase() === productName.toLowerCase();
+      const countryProductBonus = isBonus ? country.productBonus?.bonus || 0 : 0;
+
+      // Check CEO country bonuses
+      let ceoBonus = 0;
+      let ceoName = '';
+      let ceoCountryName = '';
+      let isCeoAssigned = false;
+
+      // 1. Önce fabrikalara atanmış CEO'lara bak
+      for (const comp of companies) {
+        const assignedCeo = ceoCards.find((c) => c.assignedCompanyId === comp.id);
+        if (assignedCeo?.bonuses?.countryBonus?.countryId === country.id) {
+          ceoBonus = assignedCeo.bonuses.countryBonus.bonus;
+          ceoName = assignedCeo.name;
+          ceoCountryName = assignedCeo.bonuses.countryBonus.countryName;
+          isCeoAssigned = true;
+          break;
+        }
+      }
+
+      // 2. Eğer atanmışlar arasında yoksa yönetim kadrosundaki CEO'lara bak
+      if (!isCeoAssigned) {
+        const matchingCeo = ceoCards.find(
+          (c) => c.bonuses?.countryBonus?.countryId === country.id
+        );
+        if (matchingCeo) {
+          ceoBonus = matchingCeo.bonuses.countryBonus.bonus;
+          ceoName = matchingCeo.name;
+          ceoCountryName = matchingCeo.bonuses.countryBonus.countryName;
+          isCeoAssigned = Boolean(matchingCeo.assignedCompanyId);
+        }
+      }
+
+      const netPrice = Math.max(
+        10,
+        basePrice + customsDuty + logisticsCost + countryProductBonus + ceoBonus
+      );
+
+      return {
+        basePrice,
+        customsDuty,
+        logisticsCost,
+        countryProductBonus,
+        ceoCountryBonus: ceoBonus,
+        ceoBonus,
+        ceoName,
+        ceoCountryName,
+        isCeoAssigned,
+        netPrice,
+      };
+    },
+    [countries, currentCountry, buyerCompanies, companies, ceoCards]
+  );
+
+  // 30 Dakikalık Ülke İhracat Fonksiyonu (CEO Ülke Bonusu Eklenir)
+  const sellToCountry = useCallback(
+    (countryId: string, productName: string, quantity: number = 1) => {
+      const country = countries.find((c) => c.id === countryId) || currentCountry;
+      const buyerIndex = buyerCompanies.findIndex(
+        (b) => b.craftedProduct?.name.toLowerCase() === productName.toLowerCase()
+      );
+
+      if (buyerIndex === -1) {
+        showToast(`${productName} alıcı şirket depolarında bulunamadı!`);
+        return;
+      }
+
+      const buyer = buyerCompanies[buyerIndex];
+      const available = buyer.craftedProduct?.producedCount || 0;
+      if (available < quantity) {
+        showToast(`Yetersiz stok! Alıcı deposunda sadece ${available} adet ${productName} var.`);
+        return;
+      }
+
+      const priceInfo = getExportPriceBreakdown(country.id, productName);
+      const netPerUnit = priceInfo.netPrice;
+      const totalEarnings = netPerUnit * quantity;
+
+      // Deduct stock from buyer crafted product
+      setBuyerCompanies((prev) => {
+        const updated = [...prev];
+        const target = updated[buyerIndex];
+        if (target && target.craftedProduct) {
+          target.craftedProduct = {
+            ...target.craftedProduct,
+            producedCount: Math.max(0, target.craftedProduct.producedCount - quantity),
+          };
+        }
+        return updated;
+      });
+
+      // Add cash to active company
+      setInventories((prev) => {
+        const compInv = prev[selectedCompanyId];
+        if (!compInv) return prev;
+        return {
+          ...prev,
+          [selectedCompanyId]: {
+            ...compInv,
+            cash: compInv.cash + totalEarnings,
+            totalRevenue: compInv.totalRevenue + totalEarnings,
+          },
+        };
+      });
+
+      const ceoBonusDetail = priceInfo.ceoBonus > 0
+        ? ` | 🌟 CEO Bonusu (${priceInfo.ceoName} - ${priceInfo.ceoCountryName}): +${currencySymbol}${priceInfo.ceoBonus}`
+        : '';
+
+      addLog(
+        'country_sell',
+        `🌍 ${country.name} Heyetine ${quantity} adet ${productName} ihraç edildi! Birim Net: ${currencySymbol}${netPerUnit} (Baz: ${currencySymbol}${priceInfo.basePrice}, Gümrük: ${priceInfo.customsDuty} ₺, Lojistik: ${priceInfo.logisticsCost} ₺, Ülke Primi: +${priceInfo.countryProductBonus} ₺${ceoBonusDetail}). Toplam Gelir: +${currencySymbol}${totalEarnings.toLocaleString('tr-TR')}`,
+        totalEarnings,
+        selectedCompanyId
+      );
+      showToast(
+        `✓ ${country.name}'ye ${quantity} adet ${productName} satıldı! (+${currencySymbol}${totalEarnings}${priceInfo.ceoBonus > 0 ? ` • +${priceInfo.ceoBonus} ₺ CEO Bonusu eklendi` : ''})`
+      );
+    },
+    [
+      countries,
+      currentCountry,
+      buyerCompanies,
+      selectedCompanyId,
+      currencySymbol,
+      getExportPriceBreakdown,
+      addLog,
+      showToast,
+    ]
+  );
+
+  // Sonraki Rastgele Ülkeyi Çağır / Rotasyon
+  const switchRandomCountry = useCallback(() => {
+    setCurrentCountryIndex((currIdx) => {
+      const otherIndices = countries.map((_, i) => i).filter((i) => i !== currIdx);
+      const nextIdx = otherIndices[Math.floor(Math.random() * otherIndices.length)];
+      const nextCountry = countries[nextIdx];
+      setTimeout(() => {
+        addLog(
+          'country_sell',
+          `🌍 ${nextCountry.name} Ticaret Heyeti sanayinizi ziyarete başladı! (30 dk)`
+        );
+        showToast(`🌍 ${nextCountry.name} Ticaret Heyeti fabrikanıza ulaştı!`);
+      }, 0);
+      return nextIdx;
+    });
+    setCountryTimeRemaining(1800);
+  }, [countries, addLog, showToast]);
+
+  // 30-Minute Visiting Country Interval (Rastgele Ülke Ziyareti)
+  useEffect(() => {
+    if (!isTimeRunning) return;
+
+    const interval = setInterval(() => {
+      setCountryTimeRemaining((prev) => {
+        if (prev <= 1) {
+          setCurrentCountryIndex((currIdx) => {
+            const otherIndices = countries.map((_, i) => i).filter((i) => i !== currIdx);
+            const nextIdx = otherIndices[Math.floor(Math.random() * otherIndices.length)];
+            const nextCountry = countries[nextIdx];
+            setTimeout(() => {
+              addLog(
+                'country_sell',
+                `🌍 ${nextCountry.name} Ticaret Delegasyonu sanayinizi ziyarete başladı! (30 dk)`
+              );
+              showToast(`🌍 ${nextCountry.name} Ticaret Heyeti fabrikanıza ulaştı!`);
+            }, 0);
+            return nextIdx;
+          });
+          return 1800;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isTimeRunning, countries, addLog, showToast]);
+
   // UPDATE BUYER PRICES & EXECUTE CONDITIONAL PROCUREMENT
   // Kural: Borsa fiyatı yükselen şirketler fabrikalardan malzeme alır, fiyatı düşenler alımı durdurur.
   // Alıcı şirketlerin hisse fiyatları bağımsız gerçek Finviz borsa fiyatlarıdır, iç alım/tedarik hisse fiyatını bozmaz.
@@ -1300,7 +1576,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
               };
             } else {
               // FİYAT DÜŞTÜ VEYA EKSİDE -> ALIMI DURDUR!
-              const reason = `Finviz hissesi $${currentPrice} seviyesinde ekside (%${finalPct}). Tasarruf tedbiri nedeniyle malzeme alımı durduruldu! Hammaddeler fabrikada bekleyerek hisseye +0.3 ₺ prim sağlar.`;
+              const reason = `Finviz hissesi $${currentPrice} seviyesinde ekside (%${finalPct}). Tasarruf tedbiri nedeniyle malzeme alımı durduruldu.`;
 
               reports.push({
                 buyerId: buyer.id,
@@ -1560,7 +1836,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         buyerCompanies,
         sellToBuyer,
         sellAllToBuyer,
+        supplyBuyerRecipe,
         updateBuyerPricesAndProcure,
+        countries,
+        currentCountry,
+        countryTimeRemaining,
+        sellToCountry,
+        getExportPriceBreakdown,
+        switchRandomCountry,
         marketItems,
         getMarketItem,
         isFactoryRunning,

@@ -1,5 +1,5 @@
 import { Play, Pause, Clock, Building2, Coins, TrendingUp, PackageCheck, FastForward, Activity, Sparkles, AlertTriangle } from 'lucide-react';
-import { CompanyConfig, CompanyInventoryState, MAX_STOCK_CAPACITY, STOCK_VALUATION_PER_UNIT } from '../../types/production';
+import { CompanyConfig, CompanyInventoryState, MAX_STOCK_CAPACITY } from '../../types/production';
 
 interface CompanyOverviewCardProps {
   company: CompanyConfig;
@@ -29,8 +29,6 @@ export function CompanyOverviewCard({
   const totalStockCount = Object.values(inventoryState.stock).reduce((a, b) => a + b, 0);
   const isWarehouseFull = totalStockCount >= MAX_STOCK_CAPACITY;
   const capacityPercent = Math.min(100, Math.round((totalStockCount / MAX_STOCK_CAPACITY) * 100));
-  const waitingBonus = totalStockCount * STOCK_VALUATION_PER_UNIT;
-  const stockPrice = 100 + waitingBonus;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 relative overflow-hidden">
@@ -70,23 +68,10 @@ export function CompanyOverviewCard({
           </div>
         </div>
 
-        {/* Financial, Stock Value & Real-Time Controls */}
+        {/* Financial & Real-Time Controls */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Stock Price & Waiting Bonus Box */}
-          <div className="px-4 py-2.5 rounded-xl bg-slate-900 text-white shadow-xs min-w-[170px]">
-            <span className="text-[10px] text-slate-400 font-mono uppercase block">
-              Borsa Hisse Değeri (100 ₺ Taban)
-            </span>
-            <div className="text-xl font-black font-mono text-amber-300">
-              {currencySymbol}{stockPrice.toFixed(2)}
-            </div>
-            <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
-              +{currencySymbol}{waitingBonus.toFixed(1)} Stok Primi (+0.3₺/adet)
-            </div>
-          </div>
-
           {/* Company Cash Box */}
-          <div className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 min-w-[150px]">
+          <div className="px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 min-w-[160px]">
             <span className="text-[10px] text-slate-500 font-mono uppercase block">
               {company.code} Fabrika Kasası
             </span>
@@ -144,7 +129,7 @@ export function CompanyOverviewCard({
             Fabrika Depo Kapasitesi (Limit 100 Adet):
           </span>
           <span className={isWarehouseFull ? 'text-rose-600 font-black' : 'text-slate-800 font-bold'}>
-            {totalStockCount} / {MAX_STOCK_CAPACITY} Adet (%{capacityPercent} Doluluk) &bull; +{currencySymbol}{waitingBonus.toFixed(1)} Hisse Primi
+            {totalStockCount} / {MAX_STOCK_CAPACITY} Adet (%{capacityPercent} Doluluk)
           </span>
         </div>
         <div className="w-full h-2.5 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">

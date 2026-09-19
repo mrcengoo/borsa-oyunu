@@ -1,28 +1,26 @@
 import React from 'react';
 import {
-  Coins,
-  RotateCw,
   Building2,
   TrendingUp,
   Activity,
   ArrowUpRight,
   ArrowDownRight,
-  Package,
-  Layers,
   ChevronRight,
-  Factory,
-  Sparkles,
   Users,
   ShoppingCart,
+  Globe,
+  Clock,
 } from 'lucide-react';
 import { useGame } from '../../context/GameContext';
-import { ProductIcon } from '../production/ProductIcon';
+
+function formatTimer(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 export function OverviewPage() {
   const {
-    playerTotalCash,
-    turn,
-    advanceTurn,
     companies,
     inventories,
     marketItems,
@@ -30,7 +28,9 @@ export function OverviewPage() {
     navigateToCompany,
     setActiveTab,
     currencySymbol,
-    activeEvent,
+    currentCountry,
+    countryTimeRemaining,
+    buyerCompanies,
   } = useGame();
 
   // Calculate total stock items in empire
@@ -41,79 +41,88 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* 1. Top Executive Banner: Player Total Money & Current Turn */}
+      {/* 1. Executive Top Banner (5 Üretici, 30 Dk Ülkeler, 5 Alıcı Borsa) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Total Player Cash Card */}
-        <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 rounded-2xl p-6 text-slate-950 shadow-lg relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none" />
+        {/* 5 Production Companies Overview Card */}
+        <div
+          onClick={() => setActiveTab('companies')}
+          className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-md border border-slate-800 flex flex-col justify-between cursor-pointer hover:border-amber-500/50 transition-all group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-amber-950/80">
-              OYUNCUNUN TOPLAM PARASI
+            <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+              5 ÜRETİM ŞİRKETİ PORTFÖYÜ
             </span>
-            <div className="w-8 h-8 rounded-xl bg-slate-950/15 flex items-center justify-center">
-              <Coins className="w-5 h-5 text-slate-950" />
+            <div className="w-8 h-8 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
             </div>
           </div>
           <div className="my-3">
-            <span className="text-4xl sm:text-5xl font-black font-mono tracking-tight">
-              {currencySymbol}{playerTotalCash.toLocaleString('tr-TR')}
+            <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-white">
+              {companies.length} Şirket
+            </span>
+            <span className="text-xs text-slate-400 block mt-1 font-mono">
+              ARZ &bull; MTRX &bull; BIOX &bull; AERO &bull; PANC
             </span>
           </div>
-          <div className="flex items-center justify-between text-xs font-semibold text-amber-950/80 pt-2 border-t border-amber-400/50">
-            <span>Bağlı Şirket Sayısı: {companies.length} Şirket</span>
-            <span className="font-mono font-bold">Kasa Güvencesi %100</span>
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-300 pt-2 border-t border-slate-800">
+            <span>Toplam Depo Stoku:</span>
+            <span className="font-mono font-bold text-amber-400">{totalStockCount} Adet</span>
           </div>
         </div>
 
-        {/* Current Turn & Fast Action Card */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col justify-between">
+        {/* 30-Minute Visiting Country Card */}
+        <div
+          onClick={() => setActiveTab('countries')}
+          className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col justify-between cursor-pointer hover:border-blue-400 transition-all group"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-              MEVCUT TUR GÖSTERGESİ
+              30 DK İHRACAT TERMİNALİ
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-50 text-sky-700 border border-sky-200">
-              Aktif Tur
-            </span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">
+              <Clock className="w-3 h-3 animate-pulse" />
+              <span>{formatTimer(countryTimeRemaining)}</span>
+            </div>
           </div>
-          <div className="my-2 flex items-baseline gap-3">
-            <span className="text-4xl font-black text-slate-900 font-mono">
-              TUR #{turn}
-            </span>
-            <span className="text-xs text-slate-500 font-medium">
-              Emtia döngüsü aktif
-            </span>
+          <div className="my-2 flex items-center gap-3">
+            <span className="text-4xl">{currentCountry?.flag || '🌍'}</span>
+            <div>
+              <span className="text-xl font-black text-slate-900 block leading-tight">
+                {currentCountry?.name || 'ABD'}
+              </span>
+              <span className="text-xs text-slate-500 font-medium">
+                Aktif Ziyaretçi Ülke
+              </span>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={advanceTurn}
-            className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition-colors cursor-pointer shadow-xs"
-          >
-            <RotateCw className="w-4 h-4 text-amber-400" />
-            <span>Turu İlerlet (Yeni Üretim & Piyasa Dalgalanması)</span>
-          </button>
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-blue-700 font-bold group-hover:translate-x-0.5 transition-transform">
+            <span>İhracat Taleplerini Gör</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </div>
         </div>
 
-        {/* Empire Summary & Active Event Card */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col justify-between">
+        {/* 5 Corporate Buyers & Live Stock Market Card */}
+        <div
+          onClick={() => setActiveTab('buyers')}
+          className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col justify-between cursor-pointer hover:border-emerald-400 transition-all group"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-              GÜNCEL MAKRO OLAY
+              5 ALICI ŞİRKET & BORSA
             </span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
           </div>
           <div className="my-2">
-            <h4 className="text-sm font-black text-slate-900 line-clamp-1">
-              {activeEvent.title}
-            </h4>
-            <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-              {activeEvent.description}
+            <span className="text-xl font-black text-slate-900 block">
+              NVDA &bull; LLY &bull; PWR &bull; MSFT &bull; AVAV
+            </span>
+            <p className="text-xs text-slate-500 mt-1">
+              Hissesi artıda olanlar alım yapar, ekside olanlar alımı durdurur.
             </p>
           </div>
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-500">Toplam Depo Stoku:</span>
-            <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-              {totalStockCount} Adet Ürün
-            </span>
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-emerald-700 font-bold group-hover:translate-x-0.5 transition-transform">
+            <span>Alıcı Sözleşmelerini İncele</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </div>
         </div>
       </div>
@@ -293,7 +302,7 @@ export function OverviewPage() {
                 <Users className="w-3.5 h-3.5" />
                 YÖNETİCİ KADROSU
               </span>
-              <span className="text-xs font-mono text-indigo-300">6 CEO Kartı</span>
+              <span className="text-xs font-mono text-indigo-300">5 CEO Kartı</span>
             </div>
 
             <h4 className="text-lg font-black tracking-tight text-white group-hover:text-indigo-300 transition-colors">
@@ -321,14 +330,14 @@ export function OverviewPage() {
                 <ShoppingCart className="w-3.5 h-3.5" />
                 KURUMSAL MÜŞTERİLER
               </span>
-              <span className="text-xs font-mono text-emerald-300">PWR, NVDA, CNQ...</span>
+              <span className="text-xs font-mono text-emerald-300">NVDA, LLY, PWR, MSFT, AVAV</span>
             </div>
 
             <h4 className="text-lg font-black tracking-tight text-white group-hover:text-emerald-300 transition-colors">
               Alıcı Şirket Kartları & Sözleşmeler
             </h4>
             <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Ürettiğiniz 12 ürünü yüksek tekliflerle kurumsal devlere satın. Sözleşme kotalarını tamamlayarak büyük nakit primler kazanın.
+              Ürettiğiniz hammaddeleri kurumsal devlere satın. Sözleşme kotalarını tamamlayarak büyük nakit primler kazanın.
             </p>
           </div>
 

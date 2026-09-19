@@ -4,13 +4,13 @@ import {
   Building2,
   Factory,
   TrendingUp,
-  Coins,
   Play,
   Pause,
   Sparkles,
   Users,
   ShoppingCart,
   Clock,
+  Globe,
 } from 'lucide-react';
 import { useGame } from '../../context/GameContext';
 import { GameNavTab } from '../../types/production';
@@ -25,7 +25,6 @@ export function GameNavigation() {
   const {
     activeTab,
     setActiveTab,
-    playerTotalCash,
     currency,
     setCurrency,
     currencySymbol,
@@ -37,14 +36,15 @@ export function GameNavigation() {
 
   const navItems: { id: GameNavTab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: string }[] = [
     { id: 'overview', label: 'GENEL BAKIŞ', icon: LayoutDashboard },
-    { id: 'companies', label: '4 ÜRETİM ŞİRKETİ', icon: Building2, badge: '4' },
+    { id: 'companies', label: '5 ÜRETİM ŞİRKETİ', icon: Building2, badge: '5' },
     {
       id: 'company_detail',
       label: `ŞİRKET DETAYI (${selectedCompany.code})`,
       icon: Factory,
     },
-    { id: 'ceos', label: 'CEO KARTLARI & ATAMA', icon: Users, badge: '6' },
-    { id: 'buyers', label: 'ALICI ŞİRKETLER', icon: ShoppingCart, badge: 'Sektörel' },
+    { id: 'ceos', label: 'CEO KARTLARI & ATAMA', icon: Users, badge: '5' },
+    { id: 'buyers', label: 'ALICI ŞİRKETLER', icon: ShoppingCart, badge: '5' },
+    { id: 'countries', label: '30 DK ÜLKELER', icon: Globe, badge: '5 Ülke' },
     { id: 'market', label: 'PİYASA', icon: TrendingUp, badge: 'Canlı' },
   ];
 
@@ -132,19 +132,6 @@ export function GameNavigation() {
               >
                 $ USD
               </button>
-            </div>
-
-            {/* Total Treasury Widget */}
-            <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-              <Coins className="w-4 h-4 text-amber-400" />
-              <div className="text-right">
-                <span className="text-[10px] text-amber-300/80 uppercase font-mono block leading-none">
-                  Toplam Kasa
-                </span>
-                <span className="font-mono font-black text-sm text-amber-300">
-                  {currencySymbol}{playerTotalCash.toLocaleString('tr-TR')}
-                </span>
-              </div>
             </div>
           </div>
         </div>

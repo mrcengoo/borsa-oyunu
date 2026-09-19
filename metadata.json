@@ -1,6 +1,6 @@
 {
   "name": "Kişisel Borsa Paneli",
-  "description": "4 üretim şirketi, 3'er ürün, atanabilir CEO kartları ve canlı borsa fiyatına göre yükselince fabrikalardan malzeme alıp düşünce alımı durduran kurumsal alıcı şirketler (NVDA, PWR, CNQ, LLY, MSFT) simülasyonu.",
+  "description": "5 hammadde üreticisi (ARZ, MTRX, BIOX, AERO, PANC), 5 alıcı şirket (NVDA, LLY, PWR, MSFT, AVAV), 5 CEO ve 30 dakikada bir gelen 5 ülke (ABD, Çin, Almanya, Japonya, G.Kore) ile sanayi ve ihracat simülasyonu.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

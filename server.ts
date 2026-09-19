@@ -134,6 +134,7 @@ async function fetchRealMarketData(symbol: string): Promise<CachedQuote> {
       CNQ: { price: 50.17, prevClose: 50.62, changePercent: -0.89 },
       LLY: { price: 1149.02, prevClose: 1152.44, changePercent: -0.30 },
       MSFT: { price: 492.67, prevClose: 497.75, changePercent: -1.02 },
+      AVAV: { price: 218.40, prevClose: 215.10, changePercent: 1.53 },
     };
 
     const fb = FALLBACK_PRICES[symbol] || { price: 100, prevClose: 99, changePercent: 1.0 };

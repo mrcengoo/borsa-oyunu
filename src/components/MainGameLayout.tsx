@@ -7,6 +7,7 @@ import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyDetailPage } from './pages/CompanyDetailPage';
 import { CeosPage } from './pages/CeosPage';
 import { BuyersPage } from './pages/BuyersPage';
+import { CountriesPage } from './pages/CountriesPage';
 import { MarketPage } from './pages/MarketPage';
 
 export function MainGameLayout() {
@@ -24,21 +25,24 @@ export function MainGameLayout() {
         {activeTab === 'company_detail' && <CompanyDetailPage />}
         {activeTab === 'ceos' && <CeosPage />}
         {activeTab === 'buyers' && <BuyersPage />}
+        {activeTab === 'countries' && <CountriesPage />}
         {activeTab === 'market' && <MarketPage />}
 
         {/* Global Footer */}
         <div className="mt-12 pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>
-            Sanayi & Piyasa Strateji Oyunu &bull; Çok Şirketli Endüstriyel Simülasyon
+            Sanayi & Piyasa Strateji Oyunu &bull; 5 Üretici &bull; 5 Alıcı &bull; 5 CEO &bull; 5 Ülke Simülasyonu
           </p>
           <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
-            <span>ARZ Hammadde</span>
+            <span>ARZ</span>
             <span>&bull;</span>
-            <span>MTRX Yüksek Teknoloji</span>
+            <span>MTRX</span>
             <span>&bull;</span>
-            <span>BIOX Biyofarma</span>
+            <span>BIOX</span>
             <span>&bull;</span>
-            <span>KRON Ağır Sanayi</span>
+            <span>AERO</span>
+            <span>&bull;</span>
+            <span>PANC</span>
           </div>
         </div>
 

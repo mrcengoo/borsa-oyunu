@@ -36,19 +36,19 @@ export function CompaniesPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-100 text-slate-700 mb-1.5">
             <Factory className="w-3.5 h-3.5 text-amber-600" />
-            <span>4 ÜRETİM ŞİRKETİ &bull; STRATEJİK SANAYİ</span>
+            <span>5 ÜRETİM ŞİRKETİ &bull; STRATEJİK SANAYİ</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
-            Holding Üretim Şirketleri & Borsa Değerlemesi
+            Holding Üretim Şirketleri & Bağımsız Kasalar
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
-            Her şirketin <strong>100 Adetlik Depo Kapasitesi</strong> bulunur. Depoda bekleyen her ürün şirket hissesine <strong>+0.3 ₺ değer</strong> kazandırır. Üretim süreleri 3 ila 9 dakika arasında değişir.
+            Her şirketin <strong>100 Adetlik Depo Kapasitesi</strong> bulunur. Depo dolduğunda üretim durur ve taşan partilerden ceza kesilir. Üretim süreleri 3 ila 9 dakika arasında akar.
           </p>
         </div>
       </div>
 
-      {/* Simplified 4 Companies Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      {/* 5 Companies Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
         {companies.map((company: CompanyConfig) => {
           const inv = inventories[company.id] || {
             cash: company.initialCash,
@@ -83,22 +83,22 @@ export function CompaniesPage() {
                   {company.industry}
                 </p>
 
-                {/* Stock Price Banner with Waiting Stock Bonus */}
+                {/* Stock Price & Cash Banner */}
                 <div className="mt-3 p-2.5 rounded-xl bg-slate-900 text-white flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-mono text-slate-400 block uppercase">
-                      Hisse Fiyatı (100 ₺ Taban)
+                      Hisse Fiyatı
                     </span>
                     <span className="text-base font-black font-mono text-amber-300">
                       {currencySymbol}{stockInfo.stockPrice.toFixed(2)}
                     </span>
                   </div>
                   <div className="text-right font-mono text-[10px]">
-                    <span className="text-emerald-400 font-bold block">
-                      +{currencySymbol}{(stockInfo.waitingStockBonus || 0).toFixed(1)} Stok Primi
+                    <span className="text-slate-400 block">
+                      Fabrika Kasası
                     </span>
-                    <span className="text-slate-400">
-                      ({totalStock} bekleyen ürün)
+                    <span className="text-emerald-400 font-bold">
+                      {currencySymbol}{inv.cash.toLocaleString('tr-TR')}
                     </span>
                   </div>
                 </div>

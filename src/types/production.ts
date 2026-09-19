@@ -1,15 +1,15 @@
 export const MAX_STOCK_CAPACITY = 100;
-export const STOCK_VALUATION_PER_UNIT = 0.3;
+export const OVERFLOW_WASTE_PENALTY_PER_UNIT = 1; // Hammadde üreten şirketin deposu dolarsa üretim boşa gider ve her boşa giden malzeme için 1 ₺ kasasından düşer
 
 export interface RawMaterialProduct {
   id: string;
   name: string;
   category: string;
-  icon: string; // 'cement' | 'oil' | 'steel' | 'copper' | 'wafer' | 'chip' | 'memory' | 'api' | 'polymer' | 'bio' | 'carbon' | 'titanium' | 'battery'
+  icon: string; // 'cement' | 'oil' | 'steel' | 'copper' | 'wafer' | 'chip' | 'memory' | 'api' | 'polymer' | 'bio' | 'carbon' | 'titanium' | 'battery' | 'electricity' | 'server'
   productionCost: number;
   durationSeconds: number;
   baseSellPrice: number;
-  unit: string; // e.g. 'Ton', 'Varil', 'Plaka', 'Adet', 'Kg', 'Rulo', 'Paket'
+  unit: string; // e.g. 'Ton', 'Varil', 'Plaka', 'Adet', 'Kg', 'Rulo', 'Paket', 'Modül', 'Kablo'
   description: string;
   isSpecialOil?: boolean;
 }
@@ -25,6 +25,21 @@ export interface CeoSkill {
   type: string;
 }
 
+export interface CeoBonusProfile {
+  labor: number; // İşçilik (-4)
+  finance: number; // Finansman (-6)
+  maintenance: number; // Bakım (-3)
+  logistics: number; // Lojistik (-2)
+  profitShare: number; // Kar Payı (+8)
+  export: number; // İhracat (+4)
+  marketing: number; // Pazarlama (+5)
+  countryBonus: {
+    countryId: string;
+    countryName: string;
+    bonus: number;
+  };
+}
+
 export interface CeoCardData {
   id: string;
   name: string;
@@ -33,8 +48,9 @@ export interface CeoCardData {
   specialty: string;
   bio: string;
   assignedCompanyId?: string | null;
-  incomeSkills: CeoSkill[]; // Exactly 3 Gelir Bonusu
-  expenseSkills: CeoSkill[]; // Exactly 3 Gider Bonusu
+  incomeSkills: CeoSkill[]; // 3 Gelir Bonusu
+  expenseSkills: CeoSkill[]; // 3 Gider Bonusu
+  bonuses: CeoBonusProfile; // Birebir PDF'teki 8 kalem bonus yapısı
 }
 
 export interface CompanyConfig {
@@ -45,6 +61,7 @@ export interface CompanyConfig {
   industry: string;
   tagline: string;
   initialCash: number;
+  stockCapacity: number; // PDF Page 2: ARZ: 120, MTRX: 100, BIOX: 130, AERO: 90, PANC: 110
   badge: string;
   color: {
     primary: string;
@@ -56,6 +73,7 @@ export interface CompanyConfig {
     name: string;
     title: string;
     skills: CeoSkill[];
+    bonuses?: CeoBonusProfile;
   };
   products: RawMaterialProduct[]; // Exactly 3 products per company
 }
@@ -74,6 +92,19 @@ export interface BuyerRecipeRequirement {
   productName: string;
   unit: string;
   requiredQty: number;
+}
+
+export interface ExportPriceBreakdown {
+  basePrice: number;
+  customsDuty: number;
+  logisticsCost: number;
+  countryProductBonus: number;
+  ceoCountryBonus: number;
+  ceoBonus: number;
+  ceoName?: string;
+  ceoCountryName?: string;
+  isCeoAssigned: boolean;
+  netPrice: number;
 }
 
 export interface BuyerCraftedProduct {
@@ -131,6 +162,30 @@ export interface ProductLineStatus {
   statusReason?: string;
 }
 
+export interface CountryData {
+  id: string; // 'abd' | 'cin' | 'almanya' | 'japonya' | 'gkore'
+  code: string;
+  name: string; // 'ABD' | 'ÇİN' | 'ALMANYA' | 'JAPONYA' | 'G.KORE'
+  flag: string;
+  badge: string;
+  color: string;
+  demands: string[]; // 3 requested products
+  customsDuty: number; // Gümrük vergisi e.g. -5
+  logisticsCost: number; // Lojistik masrafları e.g. -3
+  productBonus?: {
+    productName: string;
+    bonus: number;
+  };
+  missingDeliveryPenalty: number; // Eksik Teslimat: -2
+}
+
+export interface CountryVisitState {
+  country: CountryData;
+  timeRemainingSeconds: number; // 30 dakika (1800 saniye) geri sayım
+  totalDurationSeconds: number;
+  visitNumber: number;
+}
+
 export interface CompanyStockInfo {
   companyId: string;
   code: string;
@@ -142,8 +197,8 @@ export interface CompanyStockInfo {
   priceHistory: number[];
   totalSalesVolume: number;
   totalSalesRevenue: number;
-  waitingStockCount?: number;
-  waitingStockBonus?: number;
+  stockCapacity: number;
+  currentStockCount: number;
 }
 
 export interface CompanyInventoryState {
@@ -159,7 +214,7 @@ export interface CompanyInventoryState {
 export interface ProductionLogEntry {
   id: string;
   timestamp: string;
-  type: 'produce_start' | 'produce_complete' | 'sell' | 'buyer_sell' | 'buyer_auto_procure' | 'buyer_halt' | 'ceo_assign' | 'system';
+  type: 'produce_start' | 'produce_complete' | 'sell' | 'buyer_sell' | 'buyer_auto_procure' | 'buyer_halt' | 'ceo_assign' | 'country_sell' | 'system';
   message: string;
   amountChange?: number;
   companyId?: string;
@@ -171,6 +226,7 @@ export type GameNavTab =
   | 'company_detail'
   | 'ceos'
   | 'buyers'
+  | 'countries'
   | 'market';
 
 export interface MarketItem {
